@@ -66,8 +66,8 @@ func blockInNetpoll() {
 
 // blockInFastSyscalls keeps every goroutine inside a syscall almost all the
 // time — but each individual call returns immediately. sysmon only retakes a P
-// after the syscall has been running for more than 20µs, so these never trigger
-// a handoff.
+// whose syscall outlasted one sysmon tick (at least 20µs, and longer once
+// sysmon backs its polling interval off), so these never trigger a handoff.
 func blockInFastSyscalls(stop chan struct{}) {
 	null, err := syscall.Open("/dev/null", syscall.O_WRONLY, 0)
 	if err != nil {
