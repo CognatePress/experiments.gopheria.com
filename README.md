@@ -14,6 +14,7 @@ Measured on `go1.27.0 darwin/arm64`, Apple M4 Pro, 12 cores, macOS 26.6.2.
 | `gomaxprocs/` | [GOMAXPROCS is not your thread count](../gopheria.com/src/content/posts/gomaxprocs-is-not-thread-count.mdx) |
 | `benchnoise/` | [benchstat reported p=0.000 between a function and itself](../gopheria.com/src/content/posts/benchstat-or-it-didnt-happen.mdx) |
 | `stacks/` | [A 1 MiB goroutine stack costs 136µs and reports 144 B/op](../gopheria.com/src/content/posts/goroutine-stacks-grow-by-copying.mdx) |
+| `mutexchan/` | [The mutex was 68 times faster, until I added work](../gopheria.com/src/content/posts/mutex-versus-channel-at-contention.mdx) |
 
 ## Running them
 
@@ -71,6 +72,21 @@ go build -o /tmp/stacklab ./stacks/main
 go test -run=^$ -bench='Warmup|Descend' -benchmem -count=10 ./stacks/ \
   | grep -v Warmup | benchstat -row /depth -col /goroutine -
 
+# Mutex against channel, swept from 1 to 64 goroutines, first with an empty
+# critical section and then with 146ns of work in it. mutex-control is a second
+# copy of the baseline, so whatever benchstat reports for it is the run's own
+# error bar.
+go test -run=^$ -bench='Warmup|Counter' -benchmem -count=10 ./mutexchan \
+  | grep -v Warmup | benchstat -row /goroutines -col /impl -
+go test -run=^$ -bench='Warmup|Counter' -benchmem -count=10 ./mutexchan -spin=128 \
+  | grep -v Warmup | benchstat -row /goroutines -col /impl -
+go test -run=^$ -bench=Spin -count=10 ./mutexchan | benchstat -row /iters -
+
+# Whether that mutex ever reaches starvation mode, via its two symptoms: how
+# evenly the lock was shared, and how long the longest waiter waited.
+go build -o /tmp/fairness ./mutexchan/fairness
+/tmp/fairness -dur=3s
+/tmp/fairness -dur=3s -timed
 ```
 
 `benchstat` comes from `go install golang.org/x/perf/cmd/benchstat@latest`; the
