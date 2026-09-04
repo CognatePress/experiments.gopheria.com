@@ -14,6 +14,7 @@ Measured on `go1.27.0 darwin/arm64`, Apple M4 Pro, 12 cores, macOS 26.6.2.
 | `gomaxprocs/` | [GOMAXPROCS is not your thread count](../gopheria.com/src/content/posts/gomaxprocs-is-not-thread-count.mdx) |
 | `benchnoise/` | [benchstat reported p=0.000 between a function and itself](../gopheria.com/src/content/posts/benchstat-or-it-didnt-happen.mdx) |
 | `stacks/` | [A 1 MiB goroutine stack costs 136µs and reports 144 B/op](../gopheria.com/src/content/posts/goroutine-stacks-grow-by-copying.mdx) |
+| `heapprof/` | [The heap profile named a function I did not write](../gopheria.com/src/content/posts/pprof-alloc-space-versus-inuse-space.mdx) |
 | `allocsize/` | [The 30% is 46%, and it stops dead at 80 bytes](../gopheria.com/src/content/posts/the-thirty-percent-smaller-allocation.mdx) |
 | `mutexchan/` | [The mutex was 68 times faster, until I added work](../gopheria.com/src/content/posts/mutex-versus-channel-at-contention.mdx) |
 | `routers/` | [A 404 from net/http costs 62 allocations](../gopheria.com/src/content/posts/http-router-dispatch-cost.mdx) |
@@ -148,6 +149,26 @@ GODEBUG=gctrace=1 /tmp/gclab -mode=pointer -live=134217728 -dur=6s \
 GODEBUG=gctrace=1 GOGC=400 /tmp/gclab -mode=pointer -live=134217728 -dur=6s
 GODEBUG=gctrace=1 GOGC=off GOMEMLIMIT=176MiB /tmp/gclab -mode=pointer -live=134217728 -dur=6s
 go tool pprof -top -nodecount=4 -sample_index=inuse_space /tmp/gc-healthy.pprof
+```
+
+```bash
+# Two programs with opposite heaps: one allocates 782 MiB and keeps 1.1 MiB of
+# it, the other allocates 33 MiB and keeps 32.5. The four heap-profile sample
+# types agree completely about the second and disagree completely about the
+# first, which is the point.
+go build -o /tmp/heapprof ./heapprof
+/tmp/heapprof -mode=churn  -out=/tmp/churn.pprof
+/tmp/heapprof -mode=retain -out=/tmp/retain.pprof
+for m in churn retain; do
+  for idx in alloc_space alloc_objects inuse_space inuse_objects; do
+    go tool pprof -top -nodecount=4 -sample_index=$idx /tmp/$m.pprof
+  done
+done
+
+# The default MemProfileRate samples one allocation per 512 KiB, so a 1.1 MiB
+# live heap is about two samples and the inuse profile it produces is arbitrary.
+# -rate=1 makes it exact and costs 55% more wall time.
+/tmp/heapprof -mode=churn -rate=1 -out=/tmp/churn-exact.pprof
 ```
 
 ```bash
