@@ -14,6 +14,7 @@ Measured on `go1.27.0 darwin/arm64`, Apple M4 Pro, 12 cores, macOS 26.6.2.
 | `gomaxprocs/` | [GOMAXPROCS is not your thread count](../gopheria.com/src/content/posts/gomaxprocs-is-not-thread-count.mdx) |
 | `benchnoise/` | [benchstat reported p=0.000 between a function and itself](../gopheria.com/src/content/posts/benchstat-or-it-didnt-happen.mdx) |
 | `stacks/` | [A 1 MiB goroutine stack costs 136µs and reports 144 B/op](../gopheria.com/src/content/posts/goroutine-stacks-grow-by-copying.mdx) |
+| `allocsize/` | [The 30% is 46%, and it stops dead at 80 bytes](../gopheria.com/src/content/posts/the-thirty-percent-smaller-allocation.mdx) |
 | `mutexchan/` | [The mutex was 68 times faster, until I added work](../gopheria.com/src/content/posts/mutex-versus-channel-at-contention.mdx) |
 | `routers/` | [A 404 from net/http costs 62 allocations](../gopheria.com/src/content/posts/http-router-dispatch-cost.mdx) |
 | `gclab/` | [The GOGC I set next to GOMEMLIMIT never fired](../gopheria.com/src/content/posts/gogc-and-gomemlimit-are-different-knobs.mdx) · [Green Tea cut my GC time 63%, and raised it 39%](../gopheria.com/src/content/posts/green-tea-changed-your-gc-profile.mdx) · [Only 54 µs of that 68 ms collection was a pause](../gopheria.com/src/content/posts/reading-gctrace-without-guessing.mdx) |
@@ -147,6 +148,37 @@ GODEBUG=gctrace=1 /tmp/gclab -mode=pointer -live=134217728 -dur=6s \
 GODEBUG=gctrace=1 GOGC=400 /tmp/gclab -mode=pointer -live=134217728 -dur=6s
 GODEBUG=gctrace=1 GOGC=off GOMEMLIMIT=176MiB /tmp/gclab -mode=pointer -live=134217728 -dur=6s
 go tool pprof -top -nodecount=4 -sample_index=inuse_space /tmp/gc-healthy.pprof
+```
+
+```bash
+# One heap allocation at each size class either side of 80 bytes, on both
+# allocation paths. Every benchmark allocates a literal size: Go 1.27 picks its
+# size-specialised routine from a compile-time constant, and a size read out of
+# a slice defeats the thing being measured.
+#
+# Run the configurations in interleaved rounds and pool the samples. Comparing
+# one process against another back-to-back puts every between-process
+# difference into the delta — a control pair of two identical runs reported a
+# 44.82% difference that way.
+for round in 1 2 3 4 5; do
+  go test -run=^$ -bench='Warmup|Alloc' -benchmem -count=6 ./allocsize >> on.txt
+  GOEXPERIMENT=nosizespecializedmalloc \
+    go test -run=^$ -bench='Warmup|Alloc' -benchmem -count=6 ./allocsize >> off.txt
+  go test -run=^$ -bench='Warmup|Alloc' -benchmem -count=6 ./allocsize >> ctl.txt
+done
+benchstat -filter '/shape:noscan' -row /size off=off.txt on=on.txt
+
+# The cross-toolchain leg needs GOTOOLCHAIN=local and a `go` directive the older
+# toolchain accepts. With the default of auto, a go.mod requiring 1.27 makes
+# go1.26.8 download go1.27.0 and re-execute under it — `go1.26.8 version` then
+# prints go1.27.0 and both legs measure the same compiler.
+sed -i '' 's/^go 1\.27\.0$/go 1.26.0/' go.mod
+GOTOOLCHAIN=local go1.26.8 test -run=^$ -bench='Warmup|Alloc' -benchmem -count=6 ./allocsize
+GOTOOLCHAIN=local go1.27.0 test -run=^$ -bench='Warmup|Alloc' -benchmem -count=6 ./allocsize
+git checkout go.mod
+
+# Which routines the compiler actually emitted, per toolchain and flag.
+go tool nm <binary> | grep -c 'mallocgcSmall.*SC[0-9]'
 ```
 
 The `graph` mode is the one Green Tea is aimed at: four million 32-byte nodes,
