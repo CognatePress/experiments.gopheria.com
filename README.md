@@ -15,6 +15,7 @@ Measured on `go1.27.0 darwin/arm64`, Apple M4 Pro, 12 cores, macOS 26.6.2.
 | `benchnoise/` | [benchstat reported p=0.000 between a function and itself](../gopheria.com/src/content/posts/benchstat-or-it-didnt-happen.mdx) |
 | `stacks/` | [A 1 MiB goroutine stack costs 136µs and reports 144 B/op](../gopheria.com/src/content/posts/goroutine-stacks-grow-by-copying.mdx) |
 | `mutexchan/` | [The mutex was 68 times faster, until I added work](../gopheria.com/src/content/posts/mutex-versus-channel-at-contention.mdx) |
+| `routers/` | [A 404 from net/http costs 62 allocations](../gopheria.com/src/content/posts/http-router-dispatch-cost.mdx) |
 
 ## Running them
 
@@ -87,6 +88,25 @@ go test -run=^$ -bench=Spin -count=10 ./mutexchan | benchstat -row /iters -
 go build -o /tmp/fairness ./mutexchan/fairness
 /tmp/fairness -dur=3s
 /tmp/fairness -dur=3s -timed
+
+# Four routers on one 200-route table, with the handler removed. router=stdlib-
+# control is a second ServeMux built from the same routes; BenchmarkEncode is
+# the ruler the dispatch numbers are read against.
+go test -run=^$ -bench='Warmup|Dispatch|Encode' -benchmem -count=10 ./routers \
+  | grep -v Warmup | benchstat -row /path -col /router -
+
+# A request that matches nothing is the expensive one, and it moves along the
+# method axis rather than the route axis.
+go test -run=^$ -bench='Warmup|Miss' -benchmem -count=10 ./routers \
+  | grep -v Warmup | benchstat -row /routes -col /router -
+go test -run=^$ -bench='Warmup|MissMethods' -benchmem -count=10 ./routers \
+  | grep -v Warmup | benchstat -row /methods -col /router -
+
+# Where those allocations are. -memprofilerate=1 samples every one, so the
+# timings in this run are not comparable with the table above.
+go test -run=^$ -bench='Dispatch/router=stdlib/path=miss' -benchmem \
+  -memprofile=/tmp/stdlib-miss.prof -memprofilerate=1 ./routers
+go tool pprof -top -nodecount=6 -sample_index=alloc_objects /tmp/stdlib-miss.prof
 ```
 
 `benchstat` comes from `go install golang.org/x/perf/cmd/benchstat@latest`; the
