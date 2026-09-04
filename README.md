@@ -12,6 +12,8 @@ Measured on `go1.27.0 darwin/arm64`, Apple M4 Pro, 12 cores, macOS 26.6.2.
 | `escape/` | [Escape analysis is not a rule of thumb](../gopheria.com/src/content/posts/escape-analysis-is-not-a-rule-of-thumb.mdx) |
 | `pool/`, `poolbench/` | [sync.Pool survives one GC, not two](../gopheria.com/src/content/posts/sync-pool-under-gc-pressure.mdx) |
 | `gomaxprocs/` | [GOMAXPROCS is not your thread count](../gopheria.com/src/content/posts/gomaxprocs-is-not-thread-count.mdx) |
+| `benchnoise/` | [benchstat reported p=0.000 between a function and itself](../gopheria.com/src/content/posts/benchstat-or-it-didnt-happen.mdx) |
+| `stacks/` | [A 1 MiB goroutine stack costs 136µs and reports 144 B/op](../gopheria.com/src/content/posts/goroutine-stacks-grow-by-copying.mdx) |
 
 ## Running them
 
@@ -49,9 +51,31 @@ done
 docker run --rm --cpus=2 -v /tmp/gmp-linux:/gmp:ro alpine:3.22 /gmp work 200000 64
 docker run --rm --cpus=2 -e GODEBUG=containermaxprocs=0 \
   -v /tmp/gmp-linux:/gmp:ro alpine:3.22 /gmp work 200000 64
+
+# Benchmark method: two identical implementations and one that does 5% more
+# work, so every reported delta has a known correct answer to be judged against.
+go test -run=^$ -bench=AB -benchmem -count=10 ./benchnoise/ | benchstat -row /work -col /impl -
+go test -run=^$ -bench=AB -benchmem -count=10 ./benchnoise/ -order=reverse | benchstat -row /work -col /impl -
+
+# The distribution 30 single runs produce, with and without a discarded warm-up
+go build -o /tmp/spread ./benchnoise/spread
+/tmp/spread -n 30 -order=forward
+/tmp/spread -n 30 -order=forward -warmup
+
+# Goroutine stacks: where they are copied, how big each one is, and what a copy
+# does to a pointer aimed at the old one.
+go build -o /tmp/stacklab ./stacks/main
+/tmp/stacklab growth 4096
+/tmp/stacklab sizes
+/tmp/stacklab rewrite 4096
+go test -run=^$ -bench='Warmup|Descend' -benchmem -count=10 ./stacks/ \
+  | grep -v Warmup | benchstat -row /depth -col /goroutine -
+
 ```
 
-`benchstat` comes from `go install golang.org/x/perf/cmd/benchstat@latest`.
+`benchstat` comes from `go install golang.org/x/perf/cmd/benchstat@latest`; the
+numbers published from `benchnoise/` were taken with
+`golang.org/x/perf@v0.0.0-20260825160852-19be9d8e6c70`.
 
 Numbers will differ on your machine. The *shapes* — 203 threads against 4, a
 `does not escape` verdict next to 104 KiB per operation, zero misses after one
