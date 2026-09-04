@@ -1,0 +1,6 @@
+# `go test` leaves the compiled test binary behind whenever a profile flag is
+# passed — a 20 MB Mach-O file next to the package it was built from. The
+# profiles themselves are written to /tmp by every command in the README, but
+# a stray -memprofile without a path lands here too.
+*.test
+*.pprof
