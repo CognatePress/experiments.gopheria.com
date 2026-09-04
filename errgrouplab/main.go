@@ -62,7 +62,10 @@ func sibling(ctx context.Context, name string, d time.Duration, observed *atomic
 			observed.Add(1)
 			return fmt.Errorf("%s failed", name)
 		case <-ctx.Done():
-			at("%s cancelled: %v", name, ctx.Err())
+			// Err is context.Canceled for every cancelled sibling. Cause is the
+			// error that actually caused it, because WithContext derives the
+			// context with WithCancelCause and Wait passes the group's error in.
+			at("%s cancelled: Err=%v Cause=%v", name, ctx.Err(), context.Cause(ctx))
 			return ctx.Err()
 		}
 	}
@@ -89,6 +92,11 @@ func first() {
 	at("Wait returned: %v", err)
 	at("errors.Is(err, context.Canceled) = %v", errors.Is(err, context.Canceled))
 	at("siblings that reached their own failure: %d of 3", reached.Load())
+
+	// The derived context is dead once Wait returns — on success too. Anything
+	// that wants to use it for cleanup after the group finishes will find it
+	// cancelled.
+	at("after Wait: ctx.Err()=%v Cause=%v", ctx.Err(), context.Cause(ctx))
 }
 
 // nocontext: the same three siblings under a bare errgroup.Group. Nothing

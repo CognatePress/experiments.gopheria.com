@@ -14,6 +14,7 @@ Measured on `go1.27.0 darwin/arm64`, Apple M4 Pro, 12 cores, macOS 26.6.2.
 | `gomaxprocs/` | [GOMAXPROCS is not your thread count](../gopheria.com/src/content/posts/gomaxprocs-is-not-thread-count.mdx) |
 | `benchnoise/` | [benchstat reported p=0.000 between a function and itself](../gopheria.com/src/content/posts/benchstat-or-it-didnt-happen.mdx) |
 | `stacks/` | [A 1 MiB goroutine stack costs 136µs and reports 144 B/op](../gopheria.com/src/content/posts/goroutine-stacks-grow-by-copying.mdx) |
+| `errgrouplab/` | [Three siblings failed and errgroup returned one](../gopheria.com/src/content/posts/errgroup-fails-differently.mdx) |
 | `ctxleak/` | [The context arrived, the cancel did not](../gopheria.com/src/content/posts/context-cancellation-that-propagates.mdx) |
 | `bce/` | [Four of five loops had no bounds check to remove](../gopheria.com/src/content/posts/bounds-check-elimination-measured.mdx) |
 | `inlinebudget/` | [The inlining budget is 80, and one call spends 59](../gopheria.com/src/content/posts/the-inlining-budget-counted.mdx) |
@@ -153,6 +154,15 @@ GODEBUG=gctrace=1 /tmp/gclab -mode=pointer -live=134217728 -dur=6s \
 GODEBUG=gctrace=1 GOGC=400 /tmp/gclab -mode=pointer -live=134217728 -dur=6s
 GODEBUG=gctrace=1 GOGC=off GOMEMLIMIT=176MiB /tmp/gclab -mode=pointer -live=134217728 -dur=6s
 go tool pprof -top -nodecount=4 -sample_index=inuse_space /tmp/gc-healthy.pprof
+```
+
+```bash
+# Three siblings failing at 51, 101 and 151ms. With a derived context only the
+# first reaches its own failure; without one all three do and two errors are
+# discarded. limit shows SetLimit blocking the caller of Go rather than
+# queueing, and deadlock shows what that costs when the caller is a task.
+go build -o /tmp/errgrouplab ./errgrouplab
+for m in first nocontext limit deadlock; do /tmp/errgrouplab -mode=$m; done
 ```
 
 ```bash
