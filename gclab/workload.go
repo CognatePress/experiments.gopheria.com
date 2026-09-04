@@ -47,6 +47,9 @@ const gnodeBytes = 32
 // it is dropped nothing else refers to it.
 var pool []*gnode
 
+// retained keeps the live set reachable past the end of the run; see churn.
+var retained []object
+
 type scalarObj struct{ b [objBytes]byte }
 
 // pointees is what every ptrObj points into. One shared array rather than
@@ -121,6 +124,11 @@ func churn(mode string, liveBytes int64, dur time.Duration) int64 {
 	for i := range live {
 		live[i] = alloc(int64(i))
 	}
+	// Also held in a package-level variable so the set stays reachable after
+	// churn returns. Without it the live heap is garbage by the time main
+	// writes a heap profile, and the forced collection reports a live size of
+	// zero — which is true, and useless.
+	retained = live
 
 	// A random index rather than a sweep, so the collector sees objects of
 	// mixed age at every cycle instead of a wavefront moving through the slice.

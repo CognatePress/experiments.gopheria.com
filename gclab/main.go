@@ -18,6 +18,7 @@ import (
 	"os"
 	"runtime"
 	"runtime/metrics"
+	"runtime/pprof"
 	"time"
 )
 
@@ -26,6 +27,7 @@ func main() {
 	live := flag.Int64("live", 256<<20, "bytes retained in the live set")
 	dur := flag.Duration("dur", 10*time.Second, "how long to churn")
 	label := flag.String("label", "", "label reproduced in the report line")
+	heapProfile := flag.String("heapprofile", "", "write a heap profile here once the run is over")
 	flag.Parse()
 
 	switch *mode {
@@ -52,6 +54,28 @@ func main() {
 	pk := <-peaks
 
 	report(*label, *mode, ops, elapsed, before, after, pk)
+
+	// Written after the timed region, so it cannot affect anything above. The
+	// collection it forces emits a gctrace line ending in "(forced)", which is
+	// the one line in the trace that did not come from the pacer — and the
+	// profile written straight after it is the live heap that line reports.
+	if *heapProfile != "" {
+		runtime.GC()
+		f, err := os.Create(*heapProfile)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if err := pprof.WriteHeapProfile(f); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if err := f.Close(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Printf("heap profile %s\n", *heapProfile)
+	}
 }
 
 // The metrics read here are the ones that answer "what did the collector do",

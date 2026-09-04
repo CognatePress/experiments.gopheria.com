@@ -16,7 +16,7 @@ Measured on `go1.27.0 darwin/arm64`, Apple M4 Pro, 12 cores, macOS 26.6.2.
 | `stacks/` | [A 1 MiB goroutine stack costs 136µs and reports 144 B/op](../gopheria.com/src/content/posts/goroutine-stacks-grow-by-copying.mdx) |
 | `mutexchan/` | [The mutex was 68 times faster, until I added work](../gopheria.com/src/content/posts/mutex-versus-channel-at-contention.mdx) |
 | `routers/` | [A 404 from net/http costs 62 allocations](../gopheria.com/src/content/posts/http-router-dispatch-cost.mdx) |
-| `gclab/` | [The GOGC I set next to GOMEMLIMIT never fired](../gopheria.com/src/content/posts/gogc-and-gomemlimit-are-different-knobs.mdx) · [Green Tea cut my GC time 63%, and raised it 39%](../gopheria.com/src/content/posts/green-tea-changed-your-gc-profile.mdx) |
+| `gclab/` | [The GOGC I set next to GOMEMLIMIT never fired](../gopheria.com/src/content/posts/gogc-and-gomemlimit-are-different-knobs.mdx) · [Green Tea cut my GC time 63%, and raised it 39%](../gopheria.com/src/content/posts/green-tea-changed-your-gc-profile.mdx) · [Only 54 µs of that 68 ms collection was a pause](../gopheria.com/src/content/posts/reading-gctrace-without-guessing.mdx) |
 
 ## Running them
 
@@ -137,6 +137,16 @@ for rep in 1 2 3 4 5 6 7; do
     /tmp/gclab-nogt -mode=$mode -live=134217728 -dur=6s
   done
 done
+```
+
+```bash
+# One gctrace line per collection, and a heap profile written straight after a
+# forced one so the line's live figure has something to be checked against.
+GODEBUG=gctrace=1 /tmp/gclab -mode=pointer -live=134217728 -dur=6s \
+  -heapprofile=/tmp/gc-healthy.pprof
+GODEBUG=gctrace=1 GOGC=400 /tmp/gclab -mode=pointer -live=134217728 -dur=6s
+GODEBUG=gctrace=1 GOGC=off GOMEMLIMIT=176MiB /tmp/gclab -mode=pointer -live=134217728 -dur=6s
+go tool pprof -top -nodecount=4 -sample_index=inuse_space /tmp/gc-healthy.pprof
 ```
 
 The `graph` mode is the one Green Tea is aimed at: four million 32-byte nodes,
