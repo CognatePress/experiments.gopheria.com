@@ -14,6 +14,7 @@ Measured on `go1.27.0 darwin/arm64`, Apple M4 Pro, 12 cores, macOS 26.6.2.
 | `gomaxprocs/` | [GOMAXPROCS is not your thread count](../gopheria.com/src/content/posts/gomaxprocs-is-not-thread-count.mdx) |
 | `benchnoise/` | [benchstat reported p=0.000 between a function and itself](../gopheria.com/src/content/posts/benchstat-or-it-didnt-happen.mdx) |
 | `stacks/` | [A 1 MiB goroutine stack costs 136µs and reports 144 B/op](../gopheria.com/src/content/posts/goroutine-stacks-grow-by-copying.mdx) |
+| `bce/` | [Four of five loops had no bounds check to remove](../gopheria.com/src/content/posts/bounds-check-elimination-measured.mdx) |
 | `inlinebudget/` | [The inlining budget is 80, and one call spends 59](../gopheria.com/src/content/posts/the-inlining-budget-counted.mdx) |
 | `callsite/` | [One constructor, five call sites, two verdicts](../gopheria.com/src/content/posts/escape-analysis-is-per-call-site.mdx) |
 | `heapprof/` | [The heap profile named a function I did not write](../gopheria.com/src/content/posts/pprof-alloc-space-versus-inuse-space.mdx) |
@@ -151,6 +152,15 @@ GODEBUG=gctrace=1 /tmp/gclab -mode=pointer -live=134217728 -dur=6s \
 GODEBUG=gctrace=1 GOGC=400 /tmp/gclab -mode=pointer -live=134217728 -dur=6s
 GODEBUG=gctrace=1 GOGC=off GOMEMLIMIT=176MiB /tmp/gclab -mode=pointer -live=134217728 -dur=6s
 go tool pprof -top -nodecount=4 -sample_index=inuse_space /tmp/gc-healthy.pprof
+```
+
+```bash
+# Which bounds checks survived. The whole file produces one line, and it is not
+# in any of the four spellings the folklore is about — the benchmark beside it
+# is a null, and the control pair is what says so.
+go build -gcflags='-d=ssa/check_bce/debug=1' ./bce
+go test -run=^$ -bench='Warmup|Sum' -benchmem -count=10 ./bce \
+  | grep -v Warmup | benchstat -row /n -col /form -
 ```
 
 ```bash
