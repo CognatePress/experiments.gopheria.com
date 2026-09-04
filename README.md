@@ -14,6 +14,7 @@ Measured on `go1.27.0 darwin/arm64`, Apple M4 Pro, 12 cores, macOS 26.6.2.
 | `gomaxprocs/` | [GOMAXPROCS is not your thread count](../gopheria.com/src/content/posts/gomaxprocs-is-not-thread-count.mdx) |
 | `benchnoise/` | [benchstat reported p=0.000 between a function and itself](../gopheria.com/src/content/posts/benchstat-or-it-didnt-happen.mdx) |
 | `stacks/` | [A 1 MiB goroutine stack costs 136µs and reports 144 B/op](../gopheria.com/src/content/posts/goroutine-stacks-grow-by-copying.mdx) |
+| `pool2/` | [The pool got 3.6 times faster when I removed the channel](../gopheria.com/src/content/posts/the-worker-pool-you-dont-need.mdx) |
 | `errgrouplab/` | [Three siblings failed and errgroup returned one](../gopheria.com/src/content/posts/errgroup-fails-differently.mdx) |
 | `ctxleak/` | [The context arrived, the cancel did not](../gopheria.com/src/content/posts/context-cancellation-that-propagates.mdx) |
 | `bce/` | [Four of five loops had no bounds check to remove](../gopheria.com/src/content/posts/bounds-check-elimination-measured.mdx) |
@@ -154,6 +155,29 @@ GODEBUG=gctrace=1 /tmp/gclab -mode=pointer -live=134217728 -dur=6s \
 GODEBUG=gctrace=1 GOGC=400 /tmp/gclab -mode=pointer -live=134217728 -dur=6s
 GODEBUG=gctrace=1 GOGC=off GOMEMLIMIT=176MiB /tmp/gclab -mode=pointer -live=134217728 -dur=6s
 go tool pprof -top -nodecount=4 -sample_index=inuse_space /tmp/gc-healthy.pprof
+```
+
+```bash
+# Three shapes at three scales. peritem is one goroutine per item; pool is
+# twelve workers reading a buffered channel; poolnochan is the same twelve
+# workers claiming items from an atomic counter. The third one is the point —
+# it holds the bound and removes the channel, which no published comparison of
+# these shapes does, and it is 3.6x the channel pool.
+go build -o /tmp/pool2 ./pool2/main
+for rep in 1 2 3 4 5; do
+  for items in 1000 100000 10000000; do
+    for shape in peritem pool poolnochan; do
+      /tmp/pool2 -shape=$shape -items=$items -work=64 -workers=12
+    done
+  done
+done
+
+# The blocking case, where a pool is usually justified. 10^7 items is not run
+# through the pool shape: twelve workers at 1ms is fourteen minutes, which is
+# the finding rather than a gap in it.
+for shape in peritem pool; do
+  /tmp/pool2 -shape=$shape -items=100000 -block=1ms -workers=12
+done
 ```
 
 ```bash
