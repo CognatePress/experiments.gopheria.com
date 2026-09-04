@@ -22,14 +22,16 @@ import (
 )
 
 func main() {
-	mode := flag.String("mode", "pointer", "object shape: pointer or scalar")
+	mode := flag.String("mode", "pointer", "object shape: pointer, scalar or graph")
 	live := flag.Int64("live", 256<<20, "bytes retained in the live set")
 	dur := flag.Duration("dur", 10*time.Second, "how long to churn")
 	label := flag.String("label", "", "label reproduced in the report line")
 	flag.Parse()
 
-	if *mode != "pointer" && *mode != "scalar" {
-		fmt.Fprintf(os.Stderr, "unknown mode %q: want pointer or scalar\n", *mode)
+	switch *mode {
+	case "pointer", "scalar", "graph":
+	default:
+		fmt.Fprintf(os.Stderr, "unknown mode %q: want pointer, scalar or graph\n", *mode)
 		os.Exit(2)
 	}
 

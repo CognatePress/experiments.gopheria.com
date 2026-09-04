@@ -16,7 +16,7 @@ Measured on `go1.27.0 darwin/arm64`, Apple M4 Pro, 12 cores, macOS 26.6.2.
 | `stacks/` | [A 1 MiB goroutine stack costs 136µs and reports 144 B/op](../gopheria.com/src/content/posts/goroutine-stacks-grow-by-copying.mdx) |
 | `mutexchan/` | [The mutex was 68 times faster, until I added work](../gopheria.com/src/content/posts/mutex-versus-channel-at-contention.mdx) |
 | `routers/` | [A 404 from net/http costs 62 allocations](../gopheria.com/src/content/posts/http-router-dispatch-cost.mdx) |
-| `gclab/` | [The GOGC I set next to GOMEMLIMIT never fired](../gopheria.com/src/content/posts/gogc-and-gomemlimit-are-different-knobs.mdx) |
+| `gclab/` | [The GOGC I set next to GOMEMLIMIT never fired](../gopheria.com/src/content/posts/gogc-and-gomemlimit-are-different-knobs.mdx) · [Green Tea cut my GC time 63%, and raised it 39%](../gopheria.com/src/content/posts/green-tea-changed-your-gc-profile.mdx) |
 
 ## Running them
 
@@ -126,7 +126,23 @@ GOGC=off GOMEMLIMIT=176MiB /tmp/gclab -mode=pointer -live=134217728 -dur=6s   # 
 # The same heap with nothing for the mark phase to follow. Pointer density is
 # the only difference; object size and allocation count are equal by design.
 /tmp/gclab -mode=scalar -live=134217728 -dur=6s
+
+# Green Tea, on and off, against three heap shapes. Same source, two binaries;
+# the flag is a build-time GOEXPERIMENT, so the A/B needs both.
+GOEXPERIMENT=nogreenteagc go build -o /tmp/gclab-nogt ./gclab
+go version -m /tmp/gclab-nogt | grep GOEXPERIMENT   # build GOEXPERIMENT=nogreenteagc
+for rep in 1 2 3 4 5 6 7; do
+  for mode in graph pointer scalar; do
+    /tmp/gclab      -mode=$mode -live=134217728 -dur=6s
+    /tmp/gclab-nogt -mode=$mode -live=134217728 -dur=6s
+  done
+done
 ```
+
+The `graph` mode is the one Green Tea is aimed at: four million 32-byte nodes,
+each pointing into a separate 64 MiB pool, so a page holds 256 objects that all
+need marking. `pointer` and `scalar` are 768-byte objects — ten to a page — and
+they land on the other side of the result.
 
 `benchstat` comes from `go install golang.org/x/perf/cmd/benchstat@latest`; the
 numbers published from `benchnoise/` were taken with
