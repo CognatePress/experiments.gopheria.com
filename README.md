@@ -16,6 +16,7 @@ Measured on `go1.27.0 darwin/arm64`, Apple M4 Pro, 12 cores, macOS 26.6.2.
 | `stacks/` | [A 1 MiB goroutine stack costs 136µs and reports 144 B/op](../gopheria.com/src/content/posts/goroutine-stacks-grow-by-copying.mdx) |
 | `mutexchan/` | [The mutex was 68 times faster, until I added work](../gopheria.com/src/content/posts/mutex-versus-channel-at-contention.mdx) |
 | `routers/` | [A 404 from net/http costs 62 allocations](../gopheria.com/src/content/posts/http-router-dispatch-cost.mdx) |
+| `gclab/` | [The GOGC I set next to GOMEMLIMIT never fired](../gopheria.com/src/content/posts/gogc-and-gomemlimit-are-different-knobs.mdx) |
 
 ## Running them
 
@@ -107,6 +108,24 @@ go test -run=^$ -bench='Warmup|MissMethods' -benchmem -count=10 ./routers \
 go test -run=^$ -bench='Dispatch/router=stdlib/path=miss' -benchmem \
   -memprofile=/tmp/stdlib-miss.prof -memprofilerate=1 ./routers
 go tool pprof -top -nodecount=6 -sample_index=alloc_objects /tmp/stdlib-miss.prof
+
+# One steady allocator under each GC knob in turn, then both, then a limit set
+# close enough to the live heap to thrash. These are program runs rather than
+# benchmarks: each configuration is run five times and read as a median with
+# its range, because benchstat has nothing to parse here.
+go build -o /tmp/gclab ./gclab
+for g in 25 50 100 200 400; do
+  GOGC=$g /tmp/gclab -mode=pointer -live=134217728 -dur=6s -label="GOGC=$g"
+done
+for m in 192MiB 256MiB 384MiB 512MiB; do
+  GOGC=off GOMEMLIMIT=$m /tmp/gclab -mode=pointer -live=134217728 -dur=6s
+done
+GOGC=100 GOMEMLIMIT=256MiB /tmp/gclab -mode=pointer -live=134217728 -dur=6s
+GOGC=off GOMEMLIMIT=176MiB /tmp/gclab -mode=pointer -live=134217728 -dur=6s   # thrashes
+
+# The same heap with nothing for the mark phase to follow. Pointer density is
+# the only difference; object size and allocation count are equal by design.
+/tmp/gclab -mode=scalar -live=134217728 -dur=6s
 ```
 
 `benchstat` comes from `go install golang.org/x/perf/cmd/benchstat@latest`; the
